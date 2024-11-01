@@ -1,0 +1,116 @@
+blueprint:
+  name: Laundry Automation with Helper Creation
+  description: Automation to monitor washer and dryer states, create input booleans if needed, and send notifications
+  domain: automation
+  input:
+    washer_sensor:
+      name: Washer Sensor
+      description: Binary sensor for washer state
+      selector:
+        entity:
+          domain: binary_sensor
+    dryer_sensor:
+      name: Dryer Sensor
+      description: Binary sensor for dryer state
+      selector:
+        entity:
+          domain: binary_sensor
+    wet_laundry_sensor:
+      name: Wet Laundry Sensor
+      description: Sensor that detects wet laundry
+      selector:
+        entity:
+          domain: binary_sensor
+
+trigger_variables:
+  washer_started_minutes: 4
+  washer_stopped_minutes: 10
+  dryer_started_minutes: 4
+  dryer_stopped_minutes: 10
+
+trigger:
+  - platform: state
+    entity_id: !input washer_sensor
+    to: 'on'
+    for:
+      minutes: !input washer_started_minutes
+  - platform: state
+    entity_id: !input washer_sensor
+    to: 'off'
+    for:
+      minutes: !input washer_stopped_minutes
+  - platform: state
+    entity_id: !input dryer_sensor
+    to: 'on'
+    for:
+      minutes: !input dryer_started_minutes
+  - platform: state
+    entity_id: !input dryer_sensor
+    to: 'off'
+    for:
+      minutes: !input dryer_stopped_minutes
+  - platform: time_pattern
+    minutes: /30
+
+condition:
+  - condition: state
+    entity_id: !input wet_laundry_sensor
+    state: 'on'
+  - condition: template
+    value_template: "{{ states('input_boolean.washer_running') != 'unknown' and states('input_boolean.dryer_running') != 'unknown' }}"
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ states('input_boolean.washer_running') == 'unknown' }}"
+        sequence:
+          - service: input_boolean.create
+            data:
+              name: "Washer Running"
+              id: "input_boolean.washer_running"
+      - conditions:
+          - condition: template
+            value_template: "{{ states('input_boolean.dryer_running') == 'unknown' }}"
+        sequence:
+          - service: input_boolean.create
+            data:
+              name: "Dryer Running"
+              id: "input_boolean.dryer_running"
+      - conditions:
+          - condition: trigger
+            id: washer_started
+        sequence:
+          - service: input_boolean.turn_on
+            entity_id: input_boolean.washer_running
+      - conditions:
+          - condition: trigger
+            id: washer_stopped
+        sequence:
+          - service: input_boolean.turn_off
+            entity_id: input_boolean.washer_running
+          - event: laundry_event
+            event_data:
+              text: Washer is done
+      - conditions:
+          - condition: trigger
+            id: dryer_started
+        sequence:
+          - service: input_boolean.turn_on
+            entity_id: input_boolean.dryer_running
+      - conditions:
+          - condition: trigger
+            id: dryer_stopped
+        sequence:
+          - service: input_boolean.turn_off
+            entity_id: input_boolean.dryer_running
+          - event: laundry_event
+            event_data:
+              text: Dryer is done
+      - conditions:
+          - condition: trigger
+            id: wet_laundry_notification
+        sequence:
+          - event: laundry_event
+            event_data:
+              text: There is wet laundry in the washer
