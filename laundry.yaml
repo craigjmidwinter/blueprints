@@ -21,12 +21,58 @@ blueprint:
       selector:
         entity:
           domain: binary_sensor
-
-trigger_variables:
-  washer_started_minutes: 4
-  washer_stopped_minutes: 10
-  dryer_started_minutes: 4
-  dryer_stopped_minutes: 10
+    washer_running_boolean:
+      name: Washer Running Boolean
+      description: Input Boolean to track washer running state
+      selector:
+        entity:
+          domain: input_boolean
+    dryer_running_boolean:
+      name: Dryer Running Boolean
+      description: Input Boolean to track dryer running state
+      selector:
+        entity:
+          domain: input_boolean
+    washer_started_minutes:
+      name: Washer Started Minutes
+      description: Minutes the washer must be on to trigger "Washer Started"
+      default: 4
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: minutes
+          mode: slider
+    washer_stopped_minutes:
+      name: Washer Stopped Minutes
+      description: Minutes the washer must be off to trigger "Washer Stopped"
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: minutes
+          mode: slider
+    dryer_started_minutes:
+      name: Dryer Started Minutes
+      description: Minutes the dryer must be on to trigger "Dryer Started"
+      default: 4
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: minutes
+          mode: slider
+    dryer_stopped_minutes:
+      name: Dryer Stopped Minutes
+      description: Minutes the dryer must be off to trigger "Dryer Stopped"
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: minutes
+          mode: slider
 
 trigger:
   - platform: state
@@ -56,39 +102,26 @@ condition:
   - condition: state
     entity_id: !input wet_laundry_sensor
     state: 'on'
-  - condition: template
-    value_template: "{{ states('input_boolean.washer_running') != 'unknown' and states('input_boolean.dryer_running') != 'unknown' }}"
+  - condition: state
+    entity_id: !input washer_running_boolean
+    state: 'off'
 
 action:
   - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ states('input_boolean.washer_running') == 'unknown' }}"
-        sequence:
-          - service: input_boolean.create
-            data:
-              name: "Washer Running"
-              id: "input_boolean.washer_running"
-      - conditions:
-          - condition: template
-            value_template: "{{ states('input_boolean.dryer_running') == 'unknown' }}"
-        sequence:
-          - service: input_boolean.create
-            data:
-              name: "Dryer Running"
-              id: "input_boolean.dryer_running"
       - conditions:
           - condition: trigger
             id: washer_started
         sequence:
           - service: input_boolean.turn_on
-            entity_id: input_boolean.washer_running
+            target:
+              entity_id: !input washer_running_boolean
       - conditions:
           - condition: trigger
             id: washer_stopped
         sequence:
           - service: input_boolean.turn_off
-            entity_id: input_boolean.washer_running
+            target:
+              entity_id: !input washer_running_boolean
           - event: laundry_event
             event_data:
               text: Washer is done
@@ -97,13 +130,15 @@ action:
             id: dryer_started
         sequence:
           - service: input_boolean.turn_on
-            entity_id: input_boolean.dryer_running
+            target:
+              entity_id: !input dryer_running_boolean
       - conditions:
           - condition: trigger
             id: dryer_stopped
         sequence:
           - service: input_boolean.turn_off
-            entity_id: input_boolean.dryer_running
+            target:
+              entity_id: !input dryer_running_boolean
           - event: laundry_event
             event_data:
               text: Dryer is done
