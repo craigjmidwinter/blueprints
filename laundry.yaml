@@ -1,41 +1,85 @@
 blueprint:
-  name: Laundry Automation with Helper Creation
-  description: Automation to monitor washer and dryer states, create input booleans if needed, and send notifications
+  name: Laundry Cycle Monitor
+  description: >
+    Monitor washer and dryer cycles using vibration sensors, send notifications when cycles are done,
+    and persistently notify if wet laundry remains in the washer until the door is opened.
   domain: automation
   input:
+    # Sensors
     washer_sensor:
-      name: Washer Sensor
-      description: Binary sensor for washer state
+      name: Washer Vibration Sensor
+      description: Binary sensor that detects washer vibration.
       selector:
         entity:
           domain: binary_sensor
     dryer_sensor:
-      name: Dryer Sensor
-      description: Binary sensor for dryer state
+      name: Dryer Vibration Sensor
+      description: Binary sensor that detects dryer vibration.
       selector:
         entity:
           domain: binary_sensor
-    wet_laundry_sensor:
-      name: Wet Laundry Sensor
-      description: Sensor that detects wet laundry
+    door_sensor:
+      name: Washer Door Sensor
+      description: Binary sensor that detects if the washer door is open.
       selector:
         entity:
           domain: binary_sensor
+
+    # Helper Input Booleans
     washer_running_boolean:
-      name: Washer Running Boolean
-      description: Input Boolean to track washer running state
+      name: Washer Running Helper
+      description: Input Boolean to track washer running state.
       selector:
         entity:
           domain: input_boolean
     dryer_running_boolean:
-      name: Dryer Running Boolean
-      description: Input Boolean to track dryer running state
+      name: Dryer Running Helper
+      description: Input Boolean to track dryer running state.
       selector:
         entity:
           domain: input_boolean
-    washer_started_minutes:
-      name: Washer Started Minutes
-      description: Minutes the washer must be on to trigger "Washer Started"
+
+    # Notification Settings
+    notify_service:
+      name: Notification Service
+      description: >
+        Select the notification service to use (e.g., notify.mobile_app, notify.email).
+      selector:
+        service:
+          domain: notify
+    notify_target:
+      name: Notification Target
+      description: >
+        Select the target for notifications (e.g., your mobile device).
+      selector:
+        target:
+          entity:
+            domain: notify
+
+    # Notification Texts
+    notification_text_washer_done:
+      name: Washer Done Notification Text
+      description: Text to send when washer cycle is complete.
+      default: "🧺 Washer cycle is complete."
+      selector:
+        text:
+    notification_text_dryer_done:
+      name: Dryer Done Notification Text
+      description: Text to send when dryer cycle is complete.
+      default: "🔄 Dryer cycle is complete."
+      selector:
+        text:
+    notification_text_wet_laundry:
+      name: Wet Laundry Notification Text
+      description: Text to send when wet laundry is detected and door is not opened.
+      default: "⚠️ There is wet laundry in the washer. Please transfer it to prevent mildew."
+      selector:
+        text:
+
+    # Timing Settings
+    washer_started_delay:
+      name: Washer Started Delay
+      description: Minutes the washer must be on to trigger "Washer Started".
       default: 4
       selector:
         number:
@@ -43,9 +87,9 @@ blueprint:
           max: 30
           unit_of_measurement: minutes
           mode: slider
-    washer_stopped_minutes:
-      name: Washer Stopped Minutes
-      description: Minutes the washer must be off to trigger "Washer Stopped"
+    washer_stopped_delay:
+      name: Washer Stopped Delay
+      description: Minutes the washer must be off to trigger "Washer Stopped".
       default: 10
       selector:
         number:
@@ -53,9 +97,9 @@ blueprint:
           max: 30
           unit_of_measurement: minutes
           mode: slider
-    dryer_started_minutes:
-      name: Dryer Started Minutes
-      description: Minutes the dryer must be on to trigger "Dryer Started"
+    dryer_started_delay:
+      name: Dryer Started Delay
+      description: Minutes the dryer must be on to trigger "Dryer Started".
       default: 4
       selector:
         number:
@@ -63,14 +107,27 @@ blueprint:
           max: 30
           unit_of_measurement: minutes
           mode: slider
-    dryer_stopped_minutes:
-      name: Dryer Stopped Minutes
-      description: Minutes the dryer must be off to trigger "Dryer Stopped"
+    dryer_stopped_delay:
+      name: Dryer Stopped Delay
+      description: Minutes the dryer must be off to trigger "Dryer Stopped".
       default: 10
       selector:
         number:
           min: 1
           max: 30
+          unit_of_measurement: minutes
+          mode: slider
+
+    # Notification Interval for Wet Laundry
+    wet_laundry_notification_interval:
+      name: Wet Laundry Notification Interval
+      description: >
+        Interval in minutes to send wet laundry notifications.
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 60
           unit_of_measurement: minutes
           mode: slider
 
@@ -79,35 +136,36 @@ trigger:
     entity_id: !input washer_sensor
     to: 'on'
     for:
-      minutes: !input washer_started_minutes
+      minutes: !input washer_started_delay
+    id: washer_started
   - platform: state
     entity_id: !input washer_sensor
     to: 'off'
     for:
-      minutes: !input washer_stopped_minutes
+      minutes: !input washer_stopped_delay
+    id: washer_stopped
   - platform: state
     entity_id: !input dryer_sensor
     to: 'on'
     for:
-      minutes: !input dryer_started_minutes
+      minutes: !input dryer_started_delay
+    id: dryer_started
   - platform: state
     entity_id: !input dryer_sensor
     to: 'off'
     for:
-      minutes: !input dryer_stopped_minutes
+      minutes: !input dryer_stopped_delay
+    id: dryer_stopped
   - platform: time_pattern
-    minutes: "/30"
+    # Adjust the time_pattern based on the notification interval
+    minutes: "/{{ (wet_laundry_notification_interval | int) }}"
+    id: periodic_check
 
-condition:
-  - condition: state
-    entity_id: !input wet_laundry_sensor
-    state: 'on'
-  - condition: state
-    entity_id: !input washer_running_boolean
-    state: 'off'
+condition: []
 
 action:
   - choose:
+      # Handle Washer Started
       - conditions:
           - condition: trigger
             id: washer_started
@@ -115,6 +173,8 @@ action:
           - service: input_boolean.turn_on
             target:
               entity_id: !input washer_running_boolean
+
+      # Handle Washer Stopped
       - conditions:
           - condition: trigger
             id: washer_stopped
@@ -122,9 +182,12 @@ action:
           - service: input_boolean.turn_off
             target:
               entity_id: !input washer_running_boolean
-          - event: laundry_event
-            event_data:
-              text: Washer is done
+          - service: !input notify_service
+            target: !input notify_target
+            data:
+              message: !input notification_text_washer_done
+
+      # Handle Dryer Started
       - conditions:
           - condition: trigger
             id: dryer_started
@@ -132,6 +195,8 @@ action:
           - service: input_boolean.turn_on
             target:
               entity_id: !input dryer_running_boolean
+
+      # Handle Dryer Stopped
       - conditions:
           - condition: trigger
             id: dryer_stopped
@@ -139,13 +204,27 @@ action:
           - service: input_boolean.turn_off
             target:
               entity_id: !input dryer_running_boolean
-          - event: laundry_event
-            event_data:
-              text: Dryer is done
+          - service: !input notify_service
+            target: !input notify_target
+            data:
+              message: !input notification_text_dryer_done
+
+      # Handle Periodic Wet Laundry Check
       - conditions:
           - condition: trigger
-            id: wet_laundry_notification
+            id: periodic_check
         sequence:
-          - event: laundry_event
-            event_data:
-              text: There is wet laundry in the washer
+          - condition: and
+            conditions:
+              - condition: state
+                entity_id: !input washer_running_boolean
+                state: 'off'
+              - condition: state
+                entity_id: !input door_sensor
+                state: 'off'
+          - service: !input notify_service
+            target: !input notify_target
+            data:
+              message: !input notification_text_wet_laundry
+
+mode: parallel
