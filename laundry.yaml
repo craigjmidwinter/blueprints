@@ -4,7 +4,6 @@ blueprint:
     Monitor washer and dryer cycles using vibration sensors, send notifications when cycles are done,
     and persistently notify if wet laundry remains in the washer until the door is opened.
     
-    **Note**: Please create the required `input_boolean` helpers (`input_boolean.washer_running` and `input_boolean.dryer_running`) manually before using this blueprint.
   domain: automation
   input:
     # Sensors
@@ -49,13 +48,6 @@ blueprint:
       default: "notify.notify"
       selector:
         text:
-    notify_target:
-      name: Notification Target
-      description: >
-        Select the target for notifications (e.g., your mobile device).
-      selector:
-        target:
-          # This selector allows selecting one or more entities or devices compatible with the notification service.
     notification_text_washer_done:
       name: Washer Done Notification Text
       description: Text to send when washer cycle is complete.
@@ -181,7 +173,6 @@ action:
             target:
               entity_id: !input washer_running_boolean
           - service: !input notify_service
-            target: !input notify_target
             data:
               message: !input notification_text_washer_done
 
@@ -203,7 +194,6 @@ action:
             target:
               entity_id: !input dryer_running_boolean
           - service: !input notify_service
-            target: !input notify_target
             data:
               message: !input notification_text_dryer_done
 
@@ -221,7 +211,6 @@ action:
                 entity_id: !input door_sensor
                 state: 'off'
           - service: !input notify_service
-            target: !input notify_target
             data:
               message: !input notification_text_wet_laundry
 
