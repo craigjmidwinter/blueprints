@@ -43,20 +43,10 @@ blueprint:
     notify_service:
       name: Notification Service
       description: >
-        Select the notification service to use (e.g., notify.mobile_app, notify.email).
+        Enter the notification service (e.g., notify.mobile_app_yourphone).
+      default: "notify.mobile_app_yourphone"
       selector:
-        service:
-          domain: notify
-    notify_target:
-      name: Notification Target
-      description: >
-        Select the target for notifications (e.g., your mobile device).
-      selector:
-        target:
-          entity:
-            domain: notify
-
-    # Notification Texts
+        text:
     notification_text_washer_done:
       name: Washer Done Notification Text
       description: Text to send when washer cycle is complete.
@@ -183,7 +173,6 @@ action:
             target:
               entity_id: !input washer_running_boolean
           - service: !input notify_service
-            target: !input notify_target
             data:
               message: !input notification_text_washer_done
 
@@ -205,7 +194,6 @@ action:
             target:
               entity_id: !input dryer_running_boolean
           - service: !input notify_service
-            target: !input notify_target
             data:
               message: !input notification_text_dryer_done
 
@@ -223,7 +211,6 @@ action:
                 entity_id: !input door_sensor
                 state: 'off'
           - service: !input notify_service
-            target: !input notify_target
             data:
               message: !input notification_text_wet_laundry
 
