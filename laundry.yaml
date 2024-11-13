@@ -96,7 +96,7 @@ trigger:
     for:
       minutes: !input dryer_stopped_minutes
   - platform: time_pattern
-    minutes: /30
+    minutes: "/30"
 
 condition:
   - condition: state
