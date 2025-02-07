@@ -1,0 +1,188 @@
+blueprint:
+  name: Sunrise Alarm Blueprint
+  description: >
+    Use your Philips Hue (or other transition‐capable) lights to simulate a natural sunrise
+    as an alarm. Optionally play an audio clip on a media player. Customize which days
+    this automation runs and choose your alarm time.
+  domain: automation
+  input:
+    alarm_time:
+      name: Alarm Time
+      description: "Time at which the sunrise alarm should start."
+      selector:
+        time: {}
+    days:
+      name: Alarm Days
+      description: "Select the days on which the alarm should run."
+      default: ["mon", "tue", "wed", "thu", "fri"]
+      selector:
+        select:
+          options:
+            - mon
+            - tue
+            - wed
+            - thu
+            - fri
+            - sat
+            - sun
+          multiple: true
+    play_audio:
+      name: Play Audio
+      description: "If enabled, an audio clip will be played at alarm time."
+      default: false
+      selector:
+        boolean: {}
+    media_player:
+      name: Media Player
+      description: "The media player entity that will play the audio clip."
+      default: media_player.everywhere
+      selector:
+        entity:
+          domain: media_player
+    media_url:
+      name: Media URL
+      description: "The URL of the audio file to play (e.g. an MP3 file)."
+      default: "https://149walnut.publicvm.com:8123/local/audio/circle-of-life.mp3"
+      selector:
+        text: {}
+    bedroom_lamp_1:
+      name: Bedroom Lamp 1
+      description: "Entity for the first bedroom lamp (used for the sunrise effect)."
+      selector:
+        entity:
+          domain: light
+    bedroom_lamp_2:
+      name: Bedroom Lamp 2
+      description: "Entity for the second bedroom lamp (used for the sunrise effect)."
+      selector:
+        entity:
+          domain: light
+    sunrise_group:
+      name: Sunrise Group
+      description: "A group of lights that will brighten to full intensity."
+      selector:
+        entity:
+          domain: light
+    fan_light_1:
+      name: Ceiling Fan Light 1
+      description: "First ceiling fan light (used for a gradual fade-in)."
+      selector:
+        entity:
+          domain: light
+    fan_light_2:
+      name: Ceiling Fan Light 2
+      description: "Second ceiling fan light (used for a gradual fade-in)."
+      selector:
+        entity:
+          domain: light
+    corridor_light:
+      name: Corridor Light
+      description: "Light entity for the corridor (outside the room)."
+      selector:
+        entity:
+          domain: light
+
+trigger:
+  - platform: time
+    at: !input alarm_time
+
+condition:
+  - condition: time
+    weekday: !input days
+
+action:
+  # Optionally play an audio clip before starting the sunrise effect.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ play_audio }}"
+        sequence:
+          - service: media_player.play_media
+            data:
+              entity_id: !input media_player
+              media_content_id: !input media_url
+              media_content_type: "audio/mp3"
+          - delay: "00:00:03"  # Delay to account for any playback startup lag.
+    default: []
+
+  # Begin the sunrise effect.
+  # Bedroom Lamp 1: transition from a dark red to a warm orange.
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input bedroom_lamp_1
+      rgb_color: [98, 19, 0]
+      brightness: 1
+  - delay:
+      seconds: 1
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input bedroom_lamp_1
+      rgb_color: [249, 123, 0]
+      brightness: 103
+      transition: 15
+  - delay:
+      seconds: 15
+
+  # Bedroom Lamp 2: the same effect as Lamp 1.
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input bedroom_lamp_2
+      rgb_color: [249, 123, 0]
+      brightness: 1
+  - delay:
+      seconds: 1
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input bedroom_lamp_2
+      rgb_color: [249, 123, 0]
+      brightness: 103
+      transition: 15
+  - delay:
+      seconds: 15
+
+  # Sunrise Group: transition to full brightness with a warm colour.
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input sunrise_group
+      rgb_color: [255, 178, 67]
+      brightness: 255
+      transition: 30
+  - delay:
+      seconds: 30
+
+  # Ceiling Fan Light 1: slowly fade from very dim to full brightness.
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input fan_light_1
+      brightness: 1
+  - delay:
+      seconds: 1
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input fan_light_1
+      brightness: 255
+      transition: 60
+  - delay:
+      seconds: 60
+
+  # Ceiling Fan Light 2: fade in a bit faster.
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input fan_light_2
+      brightness: 1
+  - delay:
+      seconds: 1
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input fan_light_2
+      brightness: 255
+      transition: 30
+
+  # Corridor Light: turn on with a short transition.
+  - service: homeassistant.turn_on
+    data:
+      entity_id: !input corridor_light
+      brightness: 200
+      transition: 5
+
+mode: single
