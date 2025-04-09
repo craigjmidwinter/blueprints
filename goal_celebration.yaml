@@ -1,0 +1,246 @@
+blueprint:
+  name: NHL Goal Light Celebration
+  description: >
+    Create an exciting goal celebration with Philips Hue lights and audio when your favorite NHL team scores.
+    The lights will flash in team colors and play a goal horn sound through your media player.
+  domain: automation
+  input:
+    team_name:
+      name: Team Name
+      description: "The NHL team to monitor for goals (e.g. 'Winnipeg Jets')"
+      selector:
+        text: {}
+    goal_delay:
+      name: Goal Delay (seconds)
+      description: "Delay in seconds before triggering the celebration (to account for stream delays)"
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 180
+          step: 1
+    celebration_duration:
+      name: Celebration Duration (seconds)
+      description: "How long the celebration should last"
+      default: 30
+      selector:
+        number:
+          min: 10
+          max: 120
+          step: 1
+    media_player:
+      name: Media Player
+      description: "The media player that will play the goal horn sound"
+      selector:
+        entity:
+          domain: media_player
+    media_url:
+      name: Goal Horn URL
+      description: "URL of the audio file to play"
+      default: "https://hassbian.local:8123/local/audio/goalhorn1718.mp3"
+      selector:
+        text: {}
+    flash_lights:
+      name: Flash Lights
+      description: "Lights that will flash during the celebration"
+      selector:
+        target:
+          entity:
+            domain: light
+    turn_off_lights:
+      name: Turn Off Lights
+      description: "Lights that will turn off during the celebration"
+      selector:
+        target:
+          entity:
+            domain: light
+    team_color:
+      name: Team Color
+      description: "RGB color values for the team's primary color"
+      default: [255, 0, 0] # Default to red
+      selector:
+        object: {}
+
+trigger:
+  - platform: event
+    event_type: goal
+    event_data:
+      team_name: !input team_name
+
+action:
+  # Create input entities if they don't exist
+  - service: input_boolean.create
+    data:
+      name: "Goal Celebration Active"
+      initial: false
+  - service: input_boolean.create
+    data:
+      name: "Goal Celebration Kill Switch"
+      initial: false
+  - service: input_number.create
+    data:
+      name: "Goal Delay"
+      min: 0
+      max: 180
+      step: 1
+      initial: !input goal_delay
+  - service: input_number.create
+    data:
+      name: "Celebration Duration"
+      min: 10
+      max: 120
+      step: 1
+      initial: !input celebration_duration
+
+  # Store the current state of all affected lights
+  - service: variable.set_variable
+    data:
+      variable: flash_lights_previous_state
+      value: >
+        {% set states = namespace(result=[]) %}
+        {% for light in flash_lights %}
+          {% set states.result = states.result + [{
+            'entity_id': light,
+            'state': states(light),
+            'attributes': state_attr(light, 'all')
+          }] %}
+        {% endfor %}
+        {{ states.result }}
+
+  # Initial delay to account for stream delays
+  - delay: "00:00:{{ states('input_number.goal_delay') | int }}"
+
+  # Start the celebration
+  - service: input_boolean.turn_on
+    data:
+      entity_id: input_boolean.goal_celebration_active
+  - service: input_boolean.turn_off
+    data:
+      entity_id: input_boolean.goal_celebration_kill_switch
+
+  # Turn off specified lights
+  - service: light.turn_off
+    target: !input turn_off_lights
+
+  # Play the goal horn
+  - service: media_player.play_media
+    data:
+      entity_id: !input media_player
+      media_content_id: !input media_url
+      media_content_type: "audio/mp3"
+
+  # Run the light sequence
+  - repeat:
+      while:
+        - condition: state
+          entity_id: input_boolean.goal_celebration_active
+          state: "on"
+        - condition: state
+          entity_id: input_boolean.goal_celebration_kill_switch
+          state: "off"
+      sequence:
+        - service: light.turn_on
+          target: !input flash_lights
+          data:
+            rgb_color: !input team_color
+            brightness: 255
+            transition: 0.25
+        - delay: "00:00:00.25"
+        - service: light.turn_off
+          target: !input flash_lights
+          data:
+            transition: 0.25
+        - delay: "00:00:00.25"
+        - delay: "00:00:01.5"
+
+  # Stop the celebration if kill switch is activated
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: input_boolean.goal_celebration_kill_switch
+            state: "on"
+        sequence:
+          - service: input_boolean.turn_off
+            data:
+              entity_id: input_boolean.goal_celebration_active
+          - service: media_player.stop_media
+            data:
+              entity_id: !input media_player
+          - service: light.turn_on
+            target: !input flash_lights
+            data:
+              color_temp: 400
+              brightness: 255
+              transition: 1
+          - delay: "00:00:01"
+          - repeat:
+              for_each: "{{ variable.flash_lights_previous_state }}"
+              sequence:
+                - service: light.turn_on
+                  data:
+                    entity_id: "{{ repeat.item.entity_id }}"
+                    brightness: "{{ repeat.item.attributes.brightness }}"
+                    {% if repeat.item.attributes.color_mode == 'color_temp' %}
+                    color_temp: "{{ repeat.item.attributes.color_temp }}"
+                    {% elif repeat.item.attributes.color_mode == 'hs' %}
+                    hs_color: "{{ repeat.item.attributes.hs_color }}"
+                    {% elif repeat.item.attributes.color_mode == 'rgb' %}
+                    rgb_color: "{{ repeat.item.attributes.rgb_color }}"
+                    {% endif %}
+                    transition: 1
+          - service: light.turn_on
+            target: !input turn_off_lights
+            data:
+              color_temp: 400
+              brightness: 255
+              transition: 1
+          - delay: "00:00:01"
+          - service: light.turn_off
+            target: !input turn_off_lights
+            data:
+              transition: 1
+    default:
+      - sequence:
+          # Normal celebration end
+          - delay: "00:00:{{ states('input_number.celebration_duration') | int }}"
+          - service: input_boolean.turn_off
+            data:
+              entity_id: input_boolean.goal_celebration_active
+          - service: media_player.stop_media
+            data:
+              entity_id: !input media_player
+          - service: light.turn_on
+            target: !input flash_lights
+            data:
+              color_temp: 400
+              brightness: 255
+              transition: 1
+          - delay: "00:00:01"
+          - repeat:
+              for_each: "{{ variable.flash_lights_previous_state }}"
+              sequence:
+                - service: light.turn_on
+                  data:
+                    entity_id: "{{ repeat.item.entity_id }}"
+                    brightness: "{{ repeat.item.attributes.brightness }}"
+                    {% if repeat.item.attributes.color_mode == 'color_temp' %}
+                    color_temp: "{{ repeat.item.attributes.color_temp }}"
+                    {% elif repeat.item.attributes.color_mode == 'hs' %}
+                    hs_color: "{{ repeat.item.attributes.hs_color }}"
+                    {% elif repeat.item.attributes.color_mode == 'rgb' %}
+                    rgb_color: "{{ repeat.item.attributes.rgb_color }}"
+                    {% endif %}
+                    transition: 1
+          - service: light.turn_on
+            target: !input turn_off_lights
+            data:
+              color_temp: 400
+              brightness: 255
+              transition: 1
+          - delay: "00:00:01"
+          - service: light.turn_off
+            target: !input turn_off_lights
+            data:
+              transition: 1
+
+mode: single
